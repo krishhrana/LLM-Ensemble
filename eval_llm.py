@@ -33,18 +33,37 @@ pipeline = transformers.pipeline(
 
 sequences = pipeline(
     dataset['prompt'],
-    max_length=256,
+    max_length=128,
     do_sample = True,
     top_p=0.7,
     eos_token_id=tokenizer.eos_token_id,
 )
 
-gen_text = [sequences[i][0]['generated_text'].replace(dataset['prompt'][i] + '\n', '', 1) for i in range(len(dataset))]
-bertscore_results = bertscore.compute(predictions=gen_text, references=dataset['output'], lang="en")
-bleu_results = [bleu.compute(predictions = gen_text[i], references = dataset['output'][i]) for i in range(len(gen_text))]
-rouge_results = rouge.compute(predictions = gen_text, references = dataset['output'])
+gen_text = [sequences[i][0]['generated_text'].replace(dataset['prompt'][i] + '\n', '', 1).replace(',', " ") for i in range(len(sequences))]
 
-data = pd.DataFrame(columns=['Prompt', 'Result', 'Output', 'BLEU Score', 'Rouge Score'])
+bertscore_results = bertscore.compute(predictions=gen_text, references=dataset['output'], lang="en")
+bleu_results = [bleu.compute(predictions = [gen_text[i]], references = [dataset['output'][i]]) for i in range(len(gen_text))]
+rouge_results = [rouge.compute(predictions = [gen_text[i]], references = [dataset['output'][i]]) for i in range(len(gen_text))]
+
+data = pd.DataFrame(columns=['Prompt', 'Result', 'Output', 'BLEU Score', 'Bert Score', 'Rouge Score'])
+data['Prompt'] = dataset['prompt']
+data['Result'] = gen_text
+data['Output'] = dataset['output']
+data['Bert Score'] = bertscore_results['f1']
+data['BLEU Score'] = bleu_results
+data['Rouge Score'] = rouge_results
+
+data.to_csv('eval_falcon.csv', index=False)
+
+bleu_batch = bleu.compute(predictions = gen_text, references = dataset['output'])
+rouge_batch = rouge.compute(predictions = gen_text, references = dataset['output'])
+
+json_dict = {
+    'bert': bertscore_results, 
+    'bleu': bleu_batch, 
+    'rouge': rouge_batch
+}
 
 with open('falcon-7b-eval.json', 'w') as f:
     json.dump(json_dict, f, indent=4)
+    
